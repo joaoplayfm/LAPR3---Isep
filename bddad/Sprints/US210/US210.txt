@@ -1,0 +1,136 @@
+Create or Replace Procedure list_rest(p_parcela_id IN NUMBER, p_date IN DATE) 
+AS
+  id_r Restricoes.id_restricao%type;
+  nome_prod Restricoes.nome_produto%type;
+  data_ini Restricoes.data_inicio%type; 
+  data_fin Restricoes.data_final%type; 
+  Cursor id_rest(p_parcela_id IN NUMBER, p_date IN DATE) IS
+  Select id_restricao,nome_produto,data_inicio,data_final
+  From Restricoes
+  Where ParcelasId_parcelas=p_parcela_id And p_date Between data_inicio And data_final;
+BEGIN
+    Open id_rest(p_parcela_id , p_date);
+  LOOP
+    FETCH id_rest INTO id_r, nome_prod, data_ini, data_fin;
+    EXIT WHEN id_rest%NOTFOUND;
+    DBMS_OUTPUT.PUT_LINE('Restricao: '|| id_r || ' Produto: ' || nome_prod || ' Periodo: '|| data_ini || '/' || data_fin);
+  END LOOP;
+
+  CLOSE id_rest;
+END;
+
+Call list_rest(1, Date '2020-06-01');
+
+Create or Replace Procedure list_op(data_ini IN Date, data_fin IN Date)
+AS 
+    data_op Operacao.data_operacao%type;
+    tipo_op Operacao.tipo_operacao%type;
+    forma_apl Operacao.forma_aplicacao%type;
+    id_op Operacao.id_operacao%type;
+    nome_prod Operacao.nome_produto%type;
+    quant Operacao.quantidade%type;
+    parc Operacao.ParcelasId_parcelas%type;
+    Cursor ops(data_ini IN Date, data_fin IN Date) Is
+    Select id_operacao, tipo_operacao,  data_operacao, forma_aplicacao, nome_produto, quantidade, ParcelasId_parcelas
+    From Operacao
+    Where data_operacao Between data_ini And data_fin
+    Order By ParcelasId_parcelas, data_operacao Asc;
+Begin
+    Open ops(data_ini , data_fin);
+    Loop 
+    Fetch ops Into id_op, tipo_op, data_op,forma_apl, nome_prod, quant, parc; 
+    Exit When ops%notfound;
+    DBMS_OUTPUT.PUT_LINE('Op: '|| id_op || ' | tipo: ' || tipo_op || ' | data: ' || data_op || ' | forma: ' || forma_apl || ' | produto: ' || nome_prod || ' | quantidade: ' || quant || ' | parcela: ' || parc );
+    End Loop;
+    Close ops;
+END;
+
+Call list_op(DATE '2020-01-01', Date '2020-06-20');
+
+
+
+CREATE OR REPLACE PROCEDURE op_insert(id_op NUMBER, tipo_op VARCHAR, data_op DATE, forma_aplic VARCHAR, nome_prod VARCHAR, quant NUMBER, Cal_opId_op NUMBER, parId_par NUMBER)
+AS
+
+  tipo EXCEPTION;
+
+  l_count NUMBER;
+  pragma autonomous_transaction;
+BEGIN
+
+  SELECT COUNT(*) INTO l_count
+  FROM Restricoes
+  WHERE parcelasid_parcelas = parId_par
+    AND data_op BETWEEN data_inicio AND data_final
+    AND nome_produto = nome_prod;
+  IF tipo_op = 'aplicacao de fatores de producao' THEN
+
+    IF l_count > 0 THEN
+      RAISE tipo;
+    END IF;
+  END IF;
+  
+  -- Insert the operation into the Operacao table
+  INSERT INTO Operacao VALUES(id_op, tipo_op, data_op, forma_aplic, nome_prod, quant, Cal_opId_op, parId_par);
+  Commit;
+EXCEPTION
+  -- Handle the exception
+  WHEN tipo THEN
+    DBMS_OUTPUT.PUT_LINE('Operação invalida');
+END;
+
+Call op_insert(931, 'aplicacao de fatores de producao', Date '2020-05-05', 'foliar', 'adujb', 12, 800, 1);
+SELECT * FROM Operacao;
+
+
+Create or Replace Procedure check_ops(data_sem_ant in Date)
+As  
+    l_count number;
+    data_op Operacao.data_operacao%type;
+    tipo_op Operacao.tipo_operacao%type;
+    forma_apl Operacao.forma_aplicacao%type;
+    id_op Operacao.id_operacao%type;
+    nome_prod Operacao.nome_produto%type;
+    quant Operacao.quantidade%type;
+    parc Operacao.ParcelasId_parcelas%type;
+    new_date Date;
+    Cursor list_ops(data_sem_ant in Date) IS
+    Select id_operacao, tipo_operacao,  data_operacao, nome_produto, ParcelasId_parcelas
+    From Operacao
+    Where data_operacao=new_date;
+Begin
+    Select data_sem_ant + Interval '7' Day into new_date from dual;
+    Open list_ops(new_date);
+    Loop 
+    Fetch list_ops Into id_op, tipo_op, data_op, nome_prod,  parc; 
+    Exit When list_ops%notfound;
+    SELECT COUNT(*) INTO l_count
+    FROM Restricoes
+    WHERE parcelasid_parcelas = parc
+    AND data_op BETWEEN data_inicio AND data_final
+    AND nome_produto = nome_prod;
+    IF tipo_op = 'aplicacao de fatores de producao' THEN
+    IF l_count > 0 THEN
+        DBMS_OUTPUT.PUT_LINE('The operation with id ' || id_op || ' violates the restriction. Please delete the operation.');
+    else
+        DBMS_OUTPUT.PUT_LINE('Op: '|| id_op || ' | tipo: ' || tipo_op || ' | data: ' || data_op  || ' | produto: ' || nome_prod || ' | parcela: ' || parc );
+    END IF;
+    Else
+        DBMS_OUTPUT.PUT_LINE('Op: '|| id_op || ' | tipo: ' || tipo_op || ' | data: ' || data_op  || ' | produto: ' || nome_prod || ' | parcela: ' || parc );
+    END IF;
+    End Loop;
+    Close list_ops;
+End;
+
+Call check_ops(Date '2020-06-06');
+
+CREATE OR REPLACE PROCEDURE op_del(id_op NUMBER)
+AS
+    pragma autonomous_transaction;
+BEGIN
+    DELETE FROM operacao op WHERE op.id_operacao = id_op;
+    COMMIT;
+END;
+
+Call op_del(900);
+SELECT * FROM Operacao;
